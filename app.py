@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import fitz  # PyMuPDF
 import re
+from io import BytesIO
 
 st.set_page_config(layout="wide")
 st.title("Aircraft Monthly Hobbs Usage Tracker")
@@ -45,7 +46,7 @@ def extract_flight_data(pdf_file):
         except:
             i += 1
     df = pd.DataFrame(records, columns=[
-        "Date", "Pilot", "Type", "Hobbs +/-", "Hobbs Total", "Tach +/-", "Tach Total"
+        "Date", "Pilot name", "Type", "Hobbs +/-", "Hobbs Total", "Tach +/-", "Tach Total"
     ])
     return df
 
@@ -72,7 +73,10 @@ def plot_monthly_usage(df, tail_number):
     st.pyplot(plt.gcf())
     plt.close()
 
-# Create upload sections for each aircraft
+def convert_df_to_csv(df):
+    return df.to_csv(index=False).encode('utf-8')
+
+# Upload section for each aircraft
 for tail in TAIL_NUMBERS:
     with st.expander(f"Upload Report for {tail}"):
         uploaded_file = st.file_uploader(f"Upload PDF for {tail}", type="pdf", key=tail)
@@ -80,6 +84,20 @@ for tail in TAIL_NUMBERS:
             df = extract_flight_data(uploaded_file)
             if not df.empty:
                 st.success(f"Parsed {len(df)} log entries for {tail}.")
+
+                # Plot
                 plot_monthly_usage(df, tail)
+
+                # Show table
+                st.dataframe(df)
+
+                # Download CSV
+                csv = convert_df_to_csv(df)
+                st.download_button(
+                    label=f"📥 Download {tail} Data as CSV",
+                    data=csv,
+                    file_name=f"{tail}_hobbs_log.csv",
+                    mime="text/csv"
+                )
             else:
                 st.warning("No valid entries found in this PDF.")
