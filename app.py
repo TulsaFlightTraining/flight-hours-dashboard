@@ -89,6 +89,7 @@ if all_monthly_data:
             ax.xaxis.set_major_locator(mdates.MonthLocator(interval=1))
             ax.tick_params(axis='x', rotation=45)
             ax.legend()
+ax.yaxis.grid(True, linestyle='--', alpha=0.7)
             st.pyplot(fig)
             pdf.savefig(fig)
             plt.close()
