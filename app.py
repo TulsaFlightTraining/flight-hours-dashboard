@@ -91,6 +91,8 @@ if all_monthly_data:
             ax.legend()
             ax.yaxis.grid(True, linestyle='--', alpha=0.7)
             ax.xaxis.grid(True, linestyle='--', alpha=0.5)
+            ax.yaxis.grid(True, linestyle='--', alpha=0.7)
+            ax.xaxis.grid(True, linestyle='--', alpha=0.5)
             st.pyplot(fig)
             pdf.savefig(fig)
             plt.close()
