@@ -74,7 +74,7 @@ if all_monthly_data:
 
     with PdfPages("Fleet_Hobbs_Monthly_Report.pdf") as pdf:
         for tail in df_all["Tail Number"].unique():
-            df_tail = df_all[df_all["Tail Number"] == tail].set_index("Month").reindex(full_months, fill_value=0).reset_index()
+            df_tail = df_all[df_all["Tail Number"] == tail].set_index("Month").reindex(full_months, fill_value=0).reset_index().rename(columns={"index": "Month"})
             df_tail["Month_Num"] = date2num(df_tail["Month"])
 
             # Streamlit display
@@ -113,4 +113,3 @@ if all_monthly_data:
         plt.close()
 
     st.success("Fleet_Hobbs_Monthly_Report.pdf generated successfully.")
-
