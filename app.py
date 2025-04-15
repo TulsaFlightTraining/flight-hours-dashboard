@@ -13,6 +13,8 @@ st.title("Aircraft Monthly Hobbs Usage Tracker")
 TAIL_NUMBERS = ["N7219S", "N8136F", "N3072S", "N1369F", "N5762R", "N5076N", "N8351L"]
 
 def extract_flight_data(pdf_file):
+    import fitz  # Make sure PyMuPDF is imported
+
     doc = fitz.open(stream=pdf_file.read(), filetype="pdf")
     lines = []
     for page in doc:
@@ -26,11 +28,12 @@ def extract_flight_data(pdf_file):
                 date = pd.to_datetime(lines[i].strip())
                 pilot = lines[i + 1].strip()
                 type_line = lines[i + 2].strip()
+                type_clean = "Rental" if "Rental" in type_line else "Maintenance" if "Maintenance" in type_line else "Other"
                 hobbs_delta = float(lines[i + 3].replace(',', '').replace('+', '').strip())
                 hobbs_total = float(lines[i + 4].replace(',', '').strip())
                 tach_delta = float(lines[i + 5].replace(',', '').replace('+', '').strip())
                 tach_total = float(lines[i + 6].replace(',', '').strip())
-                type_clean = "Rental" if "Rental" in type_line else "Maintenance" if "Maintenance" in type_line else "Other"
+
                 records.append([
                     date,
                     pilot if pilot else "Maintenance",
@@ -40,15 +43,17 @@ def extract_flight_data(pdf_file):
                     tach_delta,
                     tach_total
                 ])
-                i += 7
+                i += 7  # move to next block
             else:
                 i += 1
-        except:
-            i += 1
+        except Exception as e:
+            i += 1  # skip block on error
+
     df = pd.DataFrame(records, columns=[
         "Date", "Pilot name", "Type", "Hobbs +/-", "Hobbs Total", "Tach +/-", "Tach Total"
     ])
     return df
+
 
 def plot_monthly_usage(df, tail_number):
     df["Month"] = df["Date"].dt.to_period("M")
