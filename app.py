@@ -1,115 +1,113 @@
-import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import fitz  # PyMuPDF
+from matplotlib.dates import date2num
+from matplotlib.backends.backend_pdf import PdfPages
+from datetime import datetime
+import matplotlib.dates as mdates
 import re
-from io import BytesIO
+import streamlit as st
 
 st.set_page_config(layout="wide")
-st.title("Aircraft Monthly Hobbs Usage Tracker")
+st.title("Monthly Hobbs Report Generator")
 
-# Tail numbers to track
-TAIL_NUMBERS = ["N7219S", "N8136F", "N3072S", "N1369F", "N5762R", "N5076N", "N8351L"]
-
-def extract_flight_data(pdf_file):
-    import fitz
-    import re
-    import pandas as pd
-
+# --- FUNCTION TO PARSE PDF ---
+def parse_flight_circle_pdf_all_pages(pdf_file):
     doc = fitz.open(stream=pdf_file.read(), filetype="pdf")
-    lines = []
-    for page in doc:
-        lines.extend(page.get_text().splitlines())
+    all_lines = []
+    for i in range(doc.page_count):
+        all_lines.extend(doc[i].get_text().splitlines())
 
-    records = []
+    parsed_entries = []
     i = 0
-    while i < len(lines) - 7:
+    while i < len(all_lines) - 7:
         try:
-            if re.match(r"\d{2}/\d{2}/\d{4}", lines[i].strip()):
-                date = pd.to_datetime(lines[i].strip())
-                pilot = lines[i + 1].strip()
-                type_line = lines[i + 2].strip()
-                hobbs_delta = float(lines[i + 3].replace(',', '').replace('+', '').strip())
-                hobbs_total = float(lines[i + 4].replace(',', '').strip())
-                tach_delta = float(lines[i + 5].replace(',', '').replace('+', '').strip())
-                tach_total = float(lines[i + 6].replace(',', '').strip())
-
-                flight_type = (
-                    "Rental" if "Rental" in type_line
-                    else "Maintenance" if "Maintenance" in type_line
-                    else "Other"
-                )
-
-                records.append([
-                    date,
-                    pilot if pilot else "Maintenance",
-                    flight_type,
-                    hobbs_delta,
-                    hobbs_total,
-                    tach_delta,
-                    tach_total
+            if re.match(r"\d{2}/\d{2}/\d{4}", all_lines[i].strip()):
+                date = pd.to_datetime(all_lines[i].strip())
+                pilot = all_lines[i + 1].strip()
+                type_line = all_lines[i + 2].strip()
+                hobbs_delta = float(all_lines[i + 4].replace(',', '').replace('+', '').strip())
+                hobbs_total = float(all_lines[i + 5].replace(',', '').strip())
+                tach_delta = float(all_lines[i + 6].replace(',', '').replace('+', '').strip())
+                tach_total = float(all_lines[i + 7].replace(',', '').strip())
+                type_clean = "Rental" if "Rental" in type_line else "Maintenance" if "Maintenance" in type_line else "Other"
+                parsed_entries.append([
+                    date, pilot if pilot else "Maintenance", type_clean,
+                    hobbs_delta, hobbs_total, tach_delta, tach_total
                 ])
-                i += 7
+                i += 8
             else:
                 i += 1
         except Exception:
             i += 1
 
-    df = pd.DataFrame(records, columns=[
-        "Date", "Pilot name", "Type", "Hobbs +/-", "Hobbs Total", "Tach +/-", "Tach Total"
+    return pd.DataFrame(parsed_entries, columns=[
+        "Date", "Pilot Name", "Type", "Hobbs +/-", "Hobbs Total", "Tach +/-", "Tach Total"
     ])
-    return df
 
+# --- STREAMLIT FILE UPLOAD ---
+st.sidebar.header("Upload PDFs by Aircraft")
+tail_numbers = ["N7219S", "N8136F", "N3072S", "N1369F", "N5762R", "N5076N", "N8351L"]
 
-def plot_monthly_usage(df, tail_number):
-    df["Month"] = df["Date"].dt.to_period("M")
-    monthly = df.groupby("Month")["Hobbs +/-"].sum().reset_index()
-    monthly["Month"] = monthly["Month"].dt.to_timestamp()
-    monthly["Month_Num"] = range(len(monthly))
+uploaded_files = {}
+for tail in tail_numbers:
+    uploaded_files[tail] = st.sidebar.file_uploader(f"Upload PDF for {tail}", type="pdf", key=tail)
 
-    plt.figure(figsize=(10, 5))
-    sns.regplot(
-        x="Month_Num",
-        y="Hobbs +/-",
-        data=monthly,
-        marker='o',
-        ci=None,
-        line_kws={"color": "red"}
-    )
-    plt.xticks(ticks=monthly["Month_Num"], labels=monthly["Month"].dt.strftime('%b %Y'), rotation=45)
-    plt.title(f"{tail_number} - Monthly Hobbs Usage with Trend Line")
-    plt.xlabel("Month")
-    plt.ylabel("Total Hobbs +/-")
-    plt.grid(True)
-    st.pyplot(plt.gcf())
-    plt.close()
+# --- PROCESS & PLOT ---
+all_monthly_data = []
+for tail, pdf in uploaded_files.items():
+    if pdf is not None:
+        df = parse_flight_circle_pdf_all_pages(pdf)
+        df["Month"] = df["Date"].dt.to_period("M")
+        monthly = df.groupby("Month")["Hobbs +/-"].sum().reset_index()
+        monthly["Month"] = monthly["Month"].dt.to_timestamp()
+        monthly["Tail Number"] = tail
+        all_monthly_data.append(monthly)
 
-def convert_df_to_csv(df):
-    return df.to_csv(index=False).encode('utf-8')
+if all_monthly_data:
+    df_all = pd.concat(all_monthly_data)
+    df_all["Month_Num"] = date2num(df_all["Month"])
+    full_months = pd.date_range(start=df_all["Month"].min(), end=df_all["Month"].max(), freq="MS")
 
-# Upload section for each aircraft
-for tail in TAIL_NUMBERS:
-    with st.expander(f"Upload Report for {tail}"):
-        uploaded_file = st.file_uploader(f"Upload PDF for {tail}", type="pdf", key=tail)
-        if uploaded_file:
-            df = extract_flight_data(uploaded_file)
-            if not df.empty:
-                st.success(f"Parsed {len(df)} log entries for {tail}.")
+    with PdfPages("Fleet_Hobbs_Monthly_Report.pdf") as pdf:
+        for tail in df_all["Tail Number"].unique():
+            df_tail = df_all[df_all["Tail Number"] == tail].set_index("Month").reindex(full_months, fill_value=0).reset_index()
+            df_tail["Month_Num"] = date2num(df_tail["Month"])
 
-                # Plot
-                plot_monthly_usage(df, tail)
+            plt.figure(figsize=(10, 5))
+            sns.lineplot(data=df_tail, x="Month", y="Hobbs +/-", marker="o", label=tail)
+            sns.regplot(
+                x=df_tail["Month_Num"],
+                y=df_tail["Hobbs +/-"],
+                scatter=False, ci=None, label="Trend", color="red"
+            )
+            plt.title(f"Monthly Hobbs Usage – {tail}")
+            plt.xlabel("Month")
+            plt.ylabel("Hobbs +/-")
+            plt.xticks(rotation=45)
+            plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%b %Y'))
+            plt.tight_layout()
+            pdf.savefig()
+            plt.close()
 
-                # Show table
-                st.dataframe(df)
+        fleet_summary = df_all.groupby("Month")["Hobbs +/-"].sum().reindex(full_months, fill_value=0).reset_index()
+        fleet_summary["Month_Num"] = date2num(fleet_summary["Month"])
 
-                # Download CSV
-                csv = convert_df_to_csv(df)
-                st.download_button(
-                    label=f"📥 Download {tail} Data as CSV",
-                    data=csv,
-                    file_name=f"{tail}_hobbs_log.csv",
-                    mime="text/csv"
-                )
-            else:
-                st.warning("No valid entries found in this PDF.")
+        plt.figure(figsize=(12, 6))
+        sns.lineplot(data=fleet_summary, x="Month", y="Hobbs +/-", marker="o", label="Fleet Total")
+        sns.regplot(
+            x=fleet_summary["Month_Num"],
+            y=fleet_summary["Hobbs +/-"],
+            scatter=False, ci=None, label="Trend", color="red"
+        )
+        plt.title("Combined Monthly Hobbs Usage (Fleet)")
+        plt.xlabel("Month")
+        plt.ylabel("Total Hobbs +/- Hours")
+        plt.xticks(rotation=45)
+        plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%b %Y'))
+        plt.tight_layout()
+        pdf.savefig()
+        plt.close()
+
+    st.success("PDF Report Generated: Fleet_Hobbs_Monthly_Report.pdf")
