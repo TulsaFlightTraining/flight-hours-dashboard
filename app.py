@@ -96,7 +96,7 @@ if all_monthly_data:
             plt.close()
 
         # Fleet-wide summary
-        fleet_summary = df_all.set_index("Month")["Hobbs +/-"].groupby(pd.Grouper(freq='MS')).sum().reindex(full_months, fill_value=0).reset_index()
+        fleet_summary = df_all.groupby("Month")["Hobbs +/-"].sum().reindex(full_months, fill_value=0).reset_index()
         fleet_summary["Month_Num"] = date2num(fleet_summary["Month"])
 
         st.markdown("### Combined Fleet Total")
