@@ -89,14 +89,14 @@ if all_monthly_data:
             ax.xaxis.set_major_locator(mdates.MonthLocator(interval=1))
             ax.tick_params(axis='x', rotation=45)
             ax.legend()
-            ax.yaxis.grid(True, linestyle='--', alpha=0.7)
-            ax.xaxis.grid(True, linestyle='--', alpha=0.5)
+ax.yaxis.grid(True, linestyle='--', alpha=0.7)
+ax.xaxis.grid(True, linestyle='--', alpha=0.5)
             st.pyplot(fig)
             pdf.savefig(fig)
             plt.close()
 
         # Fleet-wide summary
-        fleet_summary = df_all.set_index("Month").groupby(pd.Grouper(freq='MS'))["Hobbs +/-"].sum().reindex(full_months, fill_value=0).reset_index()
+        fleet_summary = df_all.groupby("Month")["Hobbs +/-"].sum().reindex(full_months, fill_value=0).reset_index()
         fleet_summary["Month_Num"] = date2num(fleet_summary["Month"])
 
         st.markdown("### Combined Fleet Total")
